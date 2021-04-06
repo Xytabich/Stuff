@@ -26,4 +26,4 @@ The bezier curve is displayed as a white line (4).
 Affected bones are highlighted by green boxes (5).
 
 ## Notes
-The BezierBones component is editor-only and is not saved to the object. But you can use unity presets to save the settings.
+The BezierBones component is editor-only and is not saved to the object. But you can use unity presets to save the configuration.
