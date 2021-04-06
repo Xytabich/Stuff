@@ -24,3 +24,6 @@ The points are connected by a yellow line in the following order: root bone, con
 
 The bezier curve is displayed as a white line (4).
 Affected bones are highlighted by green boxes (5).
+
+## Notes
+The BezierBones component is editor-only and is not saved to the object. But you can use unity presets to save the settings.
