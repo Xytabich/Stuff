@@ -21,8 +21,8 @@ namespace Xytabich.Tools
 		private Vector3[] calcResultCache = null;
 		private Vector3[] controlLinesCache = null;
 		private Vector3[] bezierLineCache = new Vector3[100];
-		private int? positionControl = null;
-		private BezierBonesTool tool;
+		private int positionControl;
+		private BezierBonesTool tool = null;
 
 		void OnEnable()
 		{
@@ -41,10 +41,14 @@ namespace Xytabich.Tools
 
 		void OnDisable()
 		{
-			if(positionControl.HasValue)
+			if(tool != null)
 			{
-				positionControl = null;
-				EditorTools.RestorePreviousTool();
+				if(EditorTools.IsActiveTool(tool))
+				{
+					EditorTools.RestorePreviousPersistentTool();
+				}
+				DestroyImmediate(tool);
+				tool = null;
 			}
 		}
 
@@ -73,7 +77,10 @@ namespace Xytabich.Tools
 				for(int i = 0; i < affectCountProp.intValue && current != null && current.parent != null; i++)
 				{
 					var scale = Vector3.Distance(current.position, current.parent.position) * 0.1f;
-					Handles.matrix = Matrix4x4.TRS(current.position, Quaternion.FromToRotation(Vector3.up, current.parent.position - current.position), new Vector3(scale, Vector3.Distance(current.parent.position, current.position), scale));
+					Handles.matrix = Matrix4x4.TRS(current.position,
+						Quaternion.FromToRotation(Vector3.up, current.parent.position - current.position),
+						new Vector3(scale, Vector3.Distance(current.parent.position, current.position), scale)
+					);
 					Handles.DrawWireCube(Vector3.up * 0.5f, Vector3.one);
 					current = current.parent;
 				}
@@ -94,31 +101,20 @@ namespace Xytabich.Tools
 				Handles.DrawAAPolyLine(controlLinesCache);
 			}
 
-			if(positionControl.HasValue && (tool == null || !EditorTools.IsActiveTool(tool)))
+			bool toolActive = IsToolActive();
+			if(toolActive)
 			{
-				if(tool != null)
+				var prop = positionControl < 0 ? targetProp : controllersProp.GetArrayElementAtIndex(positionControl);
+				var position = prop.vector3Value;
+				EditorGUI.BeginChangeCheck();
+				position = Handles.PositionHandle(TransformRooted(bones[0], position), Quaternion.identity);
+				if(EditorGUI.EndChangeCheck())
 				{
-					DestroyImmediate(tool);
-					tool = null;
-				}
-				positionControl = null;
-			}
-			if(positionControl.HasValue)
-			{
-				if(positionControl.Value < 0 || positionControl.Value < controllersProp.arraySize)
-				{
-					var prop = positionControl.Value < 0 ? targetProp : controllersProp.GetArrayElementAtIndex(positionControl.Value);
-					var position = prop.vector3Value;
-					EditorGUI.BeginChangeCheck();
-					position = Handles.PositionHandle(TransformRooted(bones[0], position), Quaternion.identity);
-					if(EditorGUI.EndChangeCheck())
-					{
-						prop.vector3Value = InverseTransformRooted(bones[0], position);
-					}
+					prop.vector3Value = InverseTransformRooted(bones[0], position);
 				}
 			}
 
-			if(DoButtonHandle(TransformRooted(bones[0], targetProp.vector3Value), Color.red, positionControl.HasValue && positionControl.Value < 0))
+			if(DoButtonHandle(TransformRooted(bones[0], targetProp.vector3Value), Color.red, toolActive && positionControl < 0))
 			{
 				SetPositionControl(-1);
 			}
@@ -126,7 +122,7 @@ namespace Xytabich.Tools
 			for(var i = 0; i < controllersProp.arraySize; i++)
 			{
 				var prop = controllersProp.GetArrayElementAtIndex(i);
-				if(DoButtonHandle(TransformRooted(bones[0], prop.vector3Value), Color.blue, positionControl.HasValue && positionControl.Value == i))
+				if(DoButtonHandle(TransformRooted(bones[0], prop.vector3Value), Color.blue, toolActive && positionControl == i))
 				{
 					SetPositionControl(i);
 				}
@@ -280,12 +276,21 @@ namespace Xytabich.Tools
 
 		private void SetPositionControl(int index)
 		{
-			if(!positionControl.HasValue)
+			if(tool == null)
 			{
 				tool = ScriptableObject.CreateInstance<BezierBonesTool>();
 				EditorTools.SetActiveTool(tool);
 			}
+			else if(!EditorTools.IsActiveTool(tool))
+			{
+				EditorTools.SetActiveTool(tool);
+			}
 			positionControl = index;
+		}
+
+		private bool IsToolActive()
+		{
+			return tool != null && EditorTools.IsActiveTool(tool);
 		}
 
 		private void DrawControllersHeader(Rect rect)
@@ -301,10 +306,10 @@ namespace Xytabich.Tools
 
 		private void RemoveControllerElement(ReorderableList list)
 		{
-			if(positionControl.HasValue && list.index <= positionControl.Value)
+			if(IsToolActive() && list.index <= positionControl)
 			{
-				positionControl = null;
-				EditorTools.RestorePreviousTool();
+				positionControl = -1;
+				EditorTools.RestorePreviousPersistentTool();
 			}
 			controllersProp.DeleteArrayElementAtIndex(list.index);
 		}
@@ -340,9 +345,23 @@ namespace Xytabich.Tools
 			controllersProp.GetArrayElementAtIndex(index).vector3Value = pos;
 		}
 
-		[EditorTool("Bezier bone editor", typeof(BezierBones))]
+		[EditorTool("Bezier points editor", typeof(BezierBones))]
 		private class BezierBonesTool : EditorTool
 		{
+			public override GUIContent toolbarIcon
+			{
+				get
+				{
+					if(btnContent == null)
+					{
+						btnContent = new GUIContent(EditorGUIUtility.IconContent("EditCollider").image, "Bezier points editor");
+					}
+					return btnContent;
+				}
+			}
+
+			private GUIContent btnContent = null;
+
 			public override bool IsAvailable()
 			{
 				return false;
